@@ -4,7 +4,7 @@ import time
 import requests
 
 from hardware_controllers.velocity_sensor_controller import VelocitySensorController
-from weaving_app.surface_movement import measure_velocity
+from weaving_app.surface_movement import measure_displacement, measure_velocity
 
 SERVER_URL = "http://127.0.0.1:5000"
 SURFACE_MOVEMENT_URL = SERVER_URL + "/surface_movement"
@@ -19,7 +19,13 @@ def main() -> None:
     while True:
         controller = VelocitySensorController()
         velocity = measure_velocity(controller)
-        response = requests.post(SURFACE_MOVEMENT_URL, data={"velocity": velocity})
+        displacement = measure_displacement(
+            velocity=velocity, time=SURFACE_MOVEMENT_REQUEST_PERIOD / 60
+        )
+        response = requests.post(
+            SURFACE_MOVEMENT_URL,
+            data={"velocity": velocity, "displacement": displacement},
+        )
         logger.info(f"Surface movement response status code: {response.status_code}")
         time.sleep(SURFACE_MOVEMENT_REQUEST_PERIOD)
 

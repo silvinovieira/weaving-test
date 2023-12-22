@@ -18,9 +18,21 @@ class VelocitySensorService(threading.Thread):
     def run(self):
         self.logger.debug("Starting VelocitySensorService")
         while True:
-            self.controller.start_sensor()
-            velocity = self.controller.get_velocity()
-            self.controller.stop_sensor()
-            self.logger.debug(f"Velocity: {velocity}")
+            velocity = self.get_velocity()
             self.queue.put(velocity)
             time.sleep(1 / self.SAMPLE_RATE)
+
+    def get_velocity(self):
+        """
+        Gets the velocity of the fabric in centimeters per minute.
+
+        Returns
+        -------
+        float
+            Returns the velocity of the fabric in cm/min.
+        """
+        self.controller.start_sensor()
+        velocity = self.controller.get_velocity()
+        self.controller.stop_sensor()
+        self.logger.debug(f"Velocity: {velocity}")
+        return velocity

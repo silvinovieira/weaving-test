@@ -7,6 +7,8 @@ import time
 import aiohttp
 import numpy as np
 
+from weaving_app.services.velocity import VelocitySensorService
+
 
 class SurfaceMovementService(threading.Thread):
     SURFACE_MOVEMENT_URL = "http://127.0.0.1:5000/surface_movement"
@@ -29,8 +31,9 @@ class SurfaceMovementService(threading.Thread):
     def run(self):
         self.logger.debug("Starting SurfaceMovementService")
         while True:
-            velocity = self.measure_velocity()
-            displacement = self.measure_displacement(velocity)
+            velocities, samples = self.get_clean_velocity_data()
+            velocity = self.measure_velocity(velocities)
+            displacement = self.measure_displacement(velocity, samples)
 
             surface_data = {"velocity": velocity, "displacement": displacement}
             self.logger.info(surface_data)
@@ -46,18 +49,38 @@ class SurfaceMovementService(threading.Thread):
 
             time.sleep(self.SERVER_REQUEST_PERIOD)
 
-    def measure_velocity(self) -> float:
-        """Returns the velocity in cm/min"""
+    def get_clean_velocity_data(self) -> tuple[list, int]:
         samples = self.velocity_queue.qsize()
         if not samples:
+            return [], 0
+        raw_velocities = [self.velocity_queue.get() for _ in range(samples)]
+        velocities = self.__remove_outliers_iqr(raw_velocities)
+        return velocities, samples
+
+    @staticmethod
+    def measure_velocity(velocities: list) -> float:
+        """Returns the average velocity in cm/min"""
+        if not velocities:
             return 0.0
-        velocities = [self.velocity_queue.get() for _ in range(samples)]
         return np.mean(velocities)
 
-    def measure_displacement(self, velocity: float) -> float:
+    @staticmethod
+    def measure_displacement(velocity: float, samples: int) -> float:
         """Returns the displacement in cm"""
-        time_ = self.SERVER_REQUEST_PERIOD / 60  # min
+        time_ = samples / VelocitySensorService.SAMPLE_RATE / 60  # min
         return velocity * time_
+
+    @staticmethod
+    def __remove_outliers_iqr(data: list) -> list:
+        q1 = np.percentile(data, 25)
+        q3 = np.percentile(data, 75)
+        iqr = q3 - q1
+
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+
+        filtered_data = [value for value in data if lower_bound < value < upper_bound]
+        return filtered_data
 
     async def post_surface_data(self, data):
         async with aiohttp.ClientSession() as session:

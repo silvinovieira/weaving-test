@@ -1,23 +1,33 @@
 import queue
 
 from weaving_app.logger import configure_logger
-from weaving_app.services import PicturesBatchService, SurfaceMovementService
+from weaving_app.services import (
+    PicturesBatchService,
+    SurfaceMovementService,
+    VelocitySensorService,
+)
 
 
 def main() -> None:
     logger = configure_logger()
 
-    q = queue.Queue()
+    velocity_queue = queue.Queue()
+    surface_queue = queue.Queue()
 
-    surface_service = SurfaceMovementService(q, logger)
+    velocity_service = VelocitySensorService(velocity_queue, logger)
+    velocity_service.daemon = True
+
+    surface_service = SurfaceMovementService(velocity_queue, surface_queue, logger)
     surface_service.daemon = True
 
-    pictures_service = PicturesBatchService(q, logger)
+    pictures_service = PicturesBatchService(surface_queue, logger)
     pictures_service.daemon = True
 
+    velocity_service.start()
     surface_service.start()
     pictures_service.start()
 
+    velocity_service.join()
     surface_service.join()
     pictures_service.join()
 

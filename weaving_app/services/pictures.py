@@ -1,4 +1,5 @@
 import asyncio
+import http
 import logging
 import queue
 import threading
@@ -58,4 +59,7 @@ class PicturesBatchService(threading.Thread):
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(self.PICTURES_BATCH_URL, data=data) as response:
-                self.logger.info(f"Pictures response status code: {response.status}")
+                status_code = response.status
+                self.logger.info(f"Pictures response status code: {status_code}")
+                if status_code != http.HTTPStatus.CREATED.value:
+                    self.logger.warning("Unexpected response")

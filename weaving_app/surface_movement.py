@@ -7,16 +7,3 @@ def measure_velocity(controller: VelocitySensorController) -> float:
     velocity = controller.get_velocity()
     controller.stop_sensor()
     return velocity
-
-
-def measure_displacement(velocity: float, time: float) -> float:
-    """
-    Args:
-        velocity (float): The velocity in cm/min.
-        time (float): The time in minutes.
-
-    Returns:
-        float: The displacement in centimeters (cm).
-    """
-    displacement = velocity * time
-    return displacement

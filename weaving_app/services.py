@@ -8,10 +8,7 @@ import aiohttp
 
 from hardware_controllers.cameras_controller import CamerasController, LightType
 from hardware_controllers.velocity_sensor_controller import VelocitySensorController
-from weaving_app.pictures_batch import take_pictures
 from weaving_app.surface_movement import measure_velocity
-
-logger = logging.getLogger()
 
 
 class SurfaceMovementService(threading.Thread):
@@ -20,11 +17,12 @@ class SurfaceMovementService(threading.Thread):
     CAMERA_VERTICAL_FIELD_OF_VIEW = 25  # cm
     DISPLACEMENT_THRESHOLD = CAMERA_VERTICAL_FIELD_OF_VIEW * 0.9  # cm
 
-    def __init__(self, q: queue.Queue):
+    def __init__(self, q: queue.Queue, logger: logging.Logger):
         threading.Thread.__init__(self)
         self.queue = q
         self.controller = VelocitySensorController()
         self.displacement_to_threshold = self.DISPLACEMENT_THRESHOLD
+        self.logger = logger
 
     def run(self):
         while True:
@@ -37,7 +35,7 @@ class SurfaceMovementService(threading.Thread):
             self.displacement_to_threshold -= displacement
 
             if self.displacement_to_threshold <= 0:
-                logger.info("Threshold displacement reached")
+                self.logger.info("Threshold displacement reached")
                 self.queue.put(surface_data)
                 self.displacement_to_threshold += self.DISPLACEMENT_THRESHOLD
 
@@ -48,24 +46,40 @@ class SurfaceMovementService(threading.Thread):
     async def post_surface_data(self, data):
         async with aiohttp.ClientSession() as session:
             async with session.post(self.SURFACE_MOVEMENT_URL, data=data) as response:
-                logger.info(f"Surface response status code: {response.status}")
+                self.logger.info(f"Surface response status code: {response.status}")
 
 
 class PicturesBatchService(threading.Thread):
     PICTURES_BATCH_URL = "http://127.0.0.1:5000/pictures_batch"
 
-    def __init__(self, q: queue.Queue):
+    def __init__(self, q: queue.Queue, logger: logging.Logger):
         threading.Thread.__init__(self)
         self.queue = q
         self.controller = CamerasController()
+        self.logger = logger
 
     def run(self):
         while True:
             if not self.queue.empty():
+                self.logger.debug(f"Queue size: {self.queue.qsize()}")
+                self.logger.info("Received surface data on pictures service")
                 surface_data = self.queue.get()
-                pictures = take_pictures(self.controller)
+                pictures = self.take_pictures()
                 self.queue.task_done()
                 asyncio.run(self.post_pictures_data(pictures, surface_data))
+
+    def take_pictures(self):
+        pictures = {}
+        self.controller.open_cameras()
+        for light_type in (LightType.BLUE, LightType.GREEN):
+            self.logger.info(f"Taking pictures for light type {light_type}")
+            self.controller.set_light_type(light_type)
+            self.controller.trigger()
+        # Separates collect from trigger to minimize displacement between pictures
+        for light_type in (LightType.BLUE, LightType.GREEN):
+            self.logger.info(f"Collecting pictures for light type {light_type}")
+            pictures[light_type] = self.controller.collect_pictures(light_type)
+        return pictures
 
     async def post_pictures_data(self, pictures, surface_data):
         data = {
@@ -84,4 +98,4 @@ class PicturesBatchService(threading.Thread):
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(self.PICTURES_BATCH_URL, data=data) as response:
-                logger.info(f"Pictures response status code: {response.status}")
+                self.logger.info(f"Pictures response status code: {response.status}")

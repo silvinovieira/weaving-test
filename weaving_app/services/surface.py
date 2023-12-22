@@ -6,6 +6,7 @@ import time
 
 import aiohttp
 import numpy as np
+import pandas as pd
 
 from weaving_app.services.velocity import VelocitySensorService
 
@@ -15,6 +16,7 @@ class SurfaceMovementService(threading.Thread):
     SERVER_REQUEST_PERIOD = 2  # seconds
     CAMERA_VERTICAL_FIELD_OF_VIEW = 25  # cm
     DISPLACEMENT_THRESHOLD = CAMERA_VERTICAL_FIELD_OF_VIEW * 0.9  # cm
+    MOVING_AVERAGE_FILTER_WINDOW_SIZE = 3
 
     def __init__(
         self,
@@ -50,11 +52,13 @@ class SurfaceMovementService(threading.Thread):
             time.sleep(self.SERVER_REQUEST_PERIOD)
 
     def get_clean_velocity_data(self) -> tuple[list, int]:
+        """Removes outliers and apply moving average filter"""
         samples = self.velocity_queue.qsize()
         if not samples:
             return [], 0
         raw_velocities = [self.velocity_queue.get() for _ in range(samples)]
-        velocities = self.__remove_outliers_iqr(raw_velocities)
+        filtered_velocities = self.__filter_outliers_iqr(raw_velocities)
+        velocities = self.__filter_moving_average(filtered_velocities)
         return velocities, samples
 
     @staticmethod
@@ -71,7 +75,7 @@ class SurfaceMovementService(threading.Thread):
         return velocity * time_
 
     @staticmethod
-    def __remove_outliers_iqr(data: list) -> list:
+    def __filter_outliers_iqr(data: list) -> list:
         q1 = np.percentile(data, 25)
         q3 = np.percentile(data, 75)
         iqr = q3 - q1
@@ -81,6 +85,13 @@ class SurfaceMovementService(threading.Thread):
 
         filtered_data = [value for value in data if lower_bound < value < upper_bound]
         return filtered_data
+
+    @staticmethod
+    def __filter_moving_average(data: list) -> list:
+        data_series = pd.Series(data)
+        window_size = SurfaceMovementService.MOVING_AVERAGE_FILTER_WINDOW_SIZE
+        moving_average = data_series.rolling(window=window_size).mean()
+        return moving_average[window_size:].tolist()
 
     async def post_surface_data(self, data):
         async with aiohttp.ClientSession() as session:

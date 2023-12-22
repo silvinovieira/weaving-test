@@ -2,6 +2,7 @@ import logging
 import queue
 from unittest.mock import patch
 
+from weaving_app.services.surface import SurfaceMovementService
 from weaving_app.services.velocity import VelocitySensorService
 
 
@@ -20,3 +21,24 @@ def test_get_velocity(mock_controller):
     mock_controller.return_value.stop_sensor.assert_called_once()
 
     assert velocity == 42.0
+
+
+def test_measure_velocity():
+    velocities = [10, 20, 30]
+    assert SurfaceMovementService.measure_velocity(velocities) == 20.0
+
+
+def test_measure_velocity_when_empty():
+    assert SurfaceMovementService.measure_velocity([]) == 0.0
+
+
+def test_measure_velocity_when_negative_value():
+    velocities = [-10, 0, 10]
+    assert SurfaceMovementService.measure_velocity(velocities) == 0.0
+
+
+def test_measure_displacement():
+    velocity = 50.0
+    samples = 100
+    expected = velocity * (samples / VelocitySensorService.SAMPLE_RATE / 60)
+    assert SurfaceMovementService.measure_displacement(velocity, samples) == expected

@@ -2,63 +2,23 @@ import asyncio
 import logging
 import queue
 import threading
-import time
 
 import aiohttp
 
 from hardware_controllers.cameras_controller import CamerasController, LightType
-from hardware_controllers.velocity_sensor_controller import VelocitySensorController
-from weaving_app.surface_movement import measure_velocity
-
-
-class SurfaceMovementService(threading.Thread):
-    SURFACE_MOVEMENT_URL = "http://127.0.0.1:5000/surface_movement"
-    SERVER_REQUEST_PERIOD = 2  # seconds
-    CAMERA_VERTICAL_FIELD_OF_VIEW = 25  # cm
-    DISPLACEMENT_THRESHOLD = CAMERA_VERTICAL_FIELD_OF_VIEW * 0.9  # cm
-
-    def __init__(self, q: queue.Queue, logger: logging.Logger):
-        threading.Thread.__init__(self)
-        self.queue = q
-        self.controller = VelocitySensorController()
-        self.displacement_to_threshold = self.DISPLACEMENT_THRESHOLD
-        self.logger = logger
-
-    def run(self):
-        while True:
-            velocity = measure_velocity(self.controller)  # cm/min
-            time_ = self.SERVER_REQUEST_PERIOD / 60  # min
-            displacement = velocity * time_  # cm
-
-            surface_data = {"velocity": velocity, "displacement": displacement}
-
-            self.displacement_to_threshold -= displacement
-
-            if self.displacement_to_threshold <= 0:
-                self.logger.info("Threshold displacement reached")
-                self.queue.put(surface_data)
-                self.displacement_to_threshold += self.DISPLACEMENT_THRESHOLD
-
-            asyncio.run(self.post_surface_data(surface_data))
-
-            time.sleep(self.SERVER_REQUEST_PERIOD)
-
-    async def post_surface_data(self, data):
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.SURFACE_MOVEMENT_URL, data=data) as response:
-                self.logger.info(f"Surface response status code: {response.status}")
 
 
 class PicturesBatchService(threading.Thread):
     PICTURES_BATCH_URL = "http://127.0.0.1:5000/pictures_batch"
 
-    def __init__(self, q: queue.Queue, logger: logging.Logger):
+    def __init__(self, surface_queue: queue.Queue, logger: logging.Logger):
         threading.Thread.__init__(self)
-        self.queue = q
+        self.queue = surface_queue
         self.controller = CamerasController()
         self.logger = logger
 
     def run(self):
+        self.logger.debug("Starting PicturesBatchService")
         while True:
             if not self.queue.empty():
                 self.logger.debug(f"Queue size: {self.queue.qsize()}")

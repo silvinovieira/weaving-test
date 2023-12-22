@@ -1,11 +1,9 @@
 import queue
 
 from weaving_app.logger import configure_logger
-from weaving_app.services import (
-    PicturesBatchService,
-    SurfaceMovementService,
-    VelocitySensorService,
-)
+from weaving_app.services.pictures import PicturesBatchService
+from weaving_app.services.surface import SurfaceMovementService
+from weaving_app.services.velocity import VelocitySensorService
 
 
 def main() -> None:
